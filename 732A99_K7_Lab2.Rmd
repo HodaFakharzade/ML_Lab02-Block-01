@@ -1,0 +1,24 @@
+---
+title: "932A99 - Group K7 - Lab 2"
+author: "Hoda Fakharzadehjahromy, Otto Moen & Ravinder Reddy Atla"
+date: '2020-12-06'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+Statement of contribution: 
+
+# 1. Assignment 1 -
+# 2. Assignment 2 - 
+# 3. Assignment 3 - 
+
+
+\newpage
+# Appendix: Assignment Code
+
+```{r, ref.label=knitr::all_labels(), echo=T, eval=F}
+``` 
