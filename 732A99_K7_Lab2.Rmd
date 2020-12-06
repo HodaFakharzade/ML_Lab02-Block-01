@@ -19,6 +19,226 @@ Statement of contribution: Assignment 1 was contributed mostly by Ravinder, assi
 #Assignment 1
 ################################
 ```
+## 1.1
+
+```{r echo = TRUE}
+library(ggplot2)
+
+iris_data <- iris
+
+N = nrow(iris_data)
+
+scatter_plot <- ggplot(iris_data, aes(x = Sepal.Width, y = Sepal.Length,
+                                      color = Species)) + geom_point()
+scatter_plot
+```
+
+There are three different classes observed in the scatterplot. Setosa can be perfectly classified linearly. Whereas, some of the data points of the species versicolor and virginica are mixed non linearly. So, there could be some errors concerning the classification of the species using LDA.
+
+
+## 1.2
+
+```{r echo = TRUE}
+setosa_data <- iris_data[iris_data$Species == 'setosa',]
+versicolor_data <- iris_data[iris_data$Species == 'versicolor',]
+virginica_data <- iris_data[iris_data$Species == 'virginica',]
+
+# Mean
+setosa_mean <- c(mean(setosa_data$Sepal.Length), 
+                 mean(setosa_data$Sepal.Width))
+
+versicolor_mean <- c(mean(versicolor_data$Sepal.Length), 
+                 mean(versicolor_data$Sepal.Width))
+
+virginica_mean <- c(mean(virginica_data$Sepal.Length), 
+                 mean(virginica_data$Sepal.Width))
+
+cat('Setosa Mean', setosa_mean)
+cat('Versicolor Mean', versicolor_mean)
+cat('virginica Mean', virginica_mean)
+```
+
+
+$$x|y=C_i,\mu_i \sum  \~ N(\mu_i,\sum)$$
+$$y|\pi =  Multinomial(\pi_i.....\pi_k)$$
+
+```{r echo = TRUE}
+# Covariance Matrix
+setosa_cov <- cov(setosa_data[1:2])
+versicolor_cov <- cov(versicolor_data[1:2])
+virginica_cov <- cov(virginica_data[1:2])
+
+cat('Setosa covariance', setosa_cov)
+cat('Versicolor covariance', versicolor_cov)
+cat('virginica covariance', virginica_cov)
+
+# Prior
+setosa_prior <- (nrow(setosa_data))/N
+versicolor_prior <- (nrow(versicolor_data))/N
+virginica_prior <- (nrow(virginica_data))/N
+
+# Pooled Covariance Matrix
+pooled_cov <- (1/N) * (nrow(setosa_data)*setosa_cov + 
+                         (nrow(versicolor_data)*versicolor_cov) + 
+                         (nrow(virginica_data)*virginica_cov))
+
+cat('pooled covariance', pooled_cov)
+```
+
+
+```{r echo=TRUE}
+# Discriminant
+discriminant <- function(x, c, mu, pi){
+  d <- (data.matrix(x) %*% solve(c) %*% mu) - (rep((0.5*(mu %*% solve(c) %*% mu)),
+                                                nrow(x))) + (rep(log(pi), nrow(x)))
+  return(d)
+}
+
+setosa_discriminant <- discriminant(iris_data[1:2],pooled_cov, setosa_mean, 
+                                    setosa_prior)
+
+versicolor_discriminant <- discriminant(iris_data[1:2],pooled_cov, 
+                                        versicolor_mean, versicolor_prior)
+
+virginica_discriminant <- discriminant(iris_data[1:2],pooled_cov, 
+                                       virginica_mean, virginica_prior)
+
+
+# Decision Boundaries between classes
+discriminant_between_class <- function(inp1, inp2, x, c){
+  mu_comb <- inp1[[1]] + inp2[[1]]
+  
+  mu_diff <- inp1[[1]] - inp2[[1]]
+  d_b <- rep(log((inp1[[2]]/inp2[[2]])),nrow(x)) - rep((0.5*(mu_comb %*% solve(c) %*% mu_diff)),
+                                      nrow(x)) + data.matrix(x) %*% solve(c) %*% mu_diff  
+  return(d_b)
+}
+setosa_versicolor <- discriminant_between_class(list(setosa_mean,setosa_prior)
+                                                ,list(versicolor_mean,versicolor_prior)
+                                                ,iris_data[1:2], pooled_cov)
+
+setosa_virginica <- discriminant_between_class(list(setosa_mean,setosa_prior)
+                                                ,list(virginica_mean,virginica_prior)
+                                                ,iris_data[1:2], pooled_cov)
+
+versicolor_virginica <- discriminant_between_class(list(versicolor_mean,versicolor_prior)
+                                                ,list(virginica_mean,virginica_prior)
+                                                ,iris_data[1:2], pooled_cov)
+
+
+
+combined_discriminant <- data.frame('setosa' = setosa_discriminant, 
+                                    'versicolor' = versicolor_discriminant,
+                                    'virginica' = virginica_discriminant)
+
+
+predicted_species <- transform(combined_discriminant, max_val = 
+                                 pmax(versicolor,setosa,virginica))
+
+predicted_species$species <- NA
+for(i in 1:nrow(predicted_species)){
+  if(predicted_species[i,]$setosa == predicted_species[i,]$max_val){
+    predicted_species[i,]$species = 'setosa'
+  }else if(predicted_species[i,]$versicolor == predicted_species[i,]$max_val){
+    predicted_species[i,]$species = 'versicolor'
+  }else{
+    predicted_species[i,]$species = 'virginica'
+  }
+}
+
+lda_predicted <- table(predicted_species$species, iris_data$Species)
+print(lda_predicted)
+missclassification_rate_lda <- 1 - (sum(diag(lda_predicted))/nrow(iris_data))
+print(missclassification_rate_lda)
+```
+
+## 1.3
+### LDA Analysis using lda()
+
+```{r echo = TRUE}
+
+library(MASS)
+lda_model <- lda(Species ~ Sepal.Length + Sepal.Width, data = iris_data)
+pred_species <- predict(lda_model,iris_data[1:2])$class
+
+pred_table <- table(pred_species, iris_data$Species)
+print(pred_table)
+missclassification_rate <- 1 - (sum(diag(pred_table))/nrow(iris_data))
+print(missclassification_rate)
+```
+
+The misclassification rate obtained is same as the one obtained using LDA implementation with basic r functions. Both of them should be the same, since lda() uses the above implemented functions to obtained the discriminants.
+
+
+## 1.4
+
+```{r echo=TRUE}
+library(mvtnorm)
+
+predicted_iris_data <- data.frame(sepal_length = NA, sepal_width = NA,
+                                  species = NA)
+  
+for(i in 1:150){
+  sample_class <- sample(1:3,1, prob = c(setosa_prior, versicolor_prior, virginica_prior))
+  if(sample_class == 1){
+    temp_sample <- data.frame(rmvnorm(1, mean = setosa_mean,sigma = pooled_cov), 
+                              species = 'setosa')
+  }else if(sample_class == 2){
+    temp_sample <- data.frame(rmvnorm(1, mean = versicolor_mean,sigma = pooled_cov), 
+                              species = 'versicolor')
+  }else{
+    temp_sample <- data.frame(rmvnorm(1, mean = virginica_mean,sigma = pooled_cov), 
+                              species = 'virginica')
+  }
+  predicted_iris_data[i,] <- temp_sample
+  
+}
+
+scatter_plot2 <- ggplot(predicted_iris_data, aes(x = sepal_width, y = 
+                                                   sepal_length,color = species)) + geom_point()
+
+print(scatter_plot2)
+```
+
+The predicted sample looks similar to the plot obtained using original iris data. Setosa is almost same except for some outliers which are present in the versicolor cluster. In the original data many points were exactly on the line i.e (the values like 2.5,2,3). Whereas in the predicted sample, most of the samples are not on the lines as observed.
+
+
+## 1.5
+
+```{r echo = TRUE}
+library(nnet)
+
+train_test_split <- function(data, split_rate){
+  id <- sample(1:dim(data)[1],floor(split_rate*dim(data)[1]))
+  train <- data[id,]
+  test <- data[-id,]
+  return(list(train = train, test = test))
+}
+
+split_data <- train_test_split(iris_data,0.7)
+train_data <- split_data$train
+test_data <- split_data$test
+
+train_data$Species <- relevel(train_data$Species, ref = 'setosa')
+
+
+logistic_model <- nnet::multinom(Species ~ Sepal.Length + Sepal.Width, 
+                           data = train_data)
+#summary(logistic_model)
+
+pred_spec <- predict(logistic_model, test_data[1:2])
+
+#pred_table2 <- table(pred_spec, test_data$Species)
+#missclassification_rate <- 1 - (sum(diag(pred_table2))/nrow(iris_data))
+#print(missclassification_rate)
+
+pred_table2 <- table(predict(logistic_model, iris_data[1:2]),iris_data$Species)
+print(pred_table2)
+missclassification_rate <- 1 - (sum(diag(pred_table2))/nrow(iris_data))
+print(missclassification_rate)
+```
+
+Misclassification error rate is same for model obtained using lda() and logistic regression.
 
 \newpage
 # 2. Assignment 2 - Decision trees and Naïve Bayes for bank marketing
@@ -270,7 +490,7 @@ The plot shows that the ROC curve for the optimal model has a greater area under
 
 
 \newpage
-# Assignment 3 - Principal components for crime level analysis.
+# 3. Assignment 3 - Principal components for crime level analysis.
 ## 3.1. *Scale all variables except of ViolentCrimesPerPop and implement PCA by using function eigen(). Report how many features are needed to obtain at least 95% of variance in the data. What is the proportion of variation explained by each of the first two principal components?*
 ```{r,include=FALSE}
 ################################
