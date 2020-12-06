@@ -18,7 +18,11 @@ Statement of contribution: Assignment 1 was contributed mostly by Ravinder, assi
 
 \newpage
 # 2. Assignment 2 - Decision trees and Naïve Bayes for bank marketing
-
+```{r,include=FALSE}
+################################
+#Assignment 2
+################################
+```
 This assignment consists of fitting decision trees and Naïve Bayes models for a data set containin information about marketing campaigns carried out by a Portuguese bank to get clients to subscribe to one of their products. 
 
 ## 2.1 - Import and divide data
