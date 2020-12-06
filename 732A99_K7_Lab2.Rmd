@@ -14,7 +14,11 @@ Statement of contribution: Assignment 1 was contributed mostly by Ravinder, assi
 
 
 # 1. Assignment 1 - LDA and logistic regression
-
+```{r,include=FALSE}
+################################
+#Assignment 1
+################################
+```
 
 \newpage
 # 2. Assignment 2 - Decision trees and Naïve Bayes for bank marketing
