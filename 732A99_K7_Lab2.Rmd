@@ -1,24 +1,464 @@
 ---
 title: "932A99 - Group K7 - Lab 2"
 author: "Hoda Fakharzadehjahromy, Otto Moen & Ravinder Reddy Atla"
-date: '2020-12-06'
+date: \today
 output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
+library(tree)
+library(e1071)
 ```
 
-Statement of contribution: 
+Statement of contribution: Assignment 1 was contributed mostly by Ravinder, assignment 2 by Otto and assignment 3 by Hoda.
 
-# 1. Assignment 1 -
-# 2. Assignment 2 - 
-# 3. Assignment 3 - 
 
+# 1. Assignment 1 - LDA and logistic regression
+
+
+\newpage
+# 2. Assignment 2 - Decision trees and Naïve Bayes for bank marketing
+
+This assignment consists of fitting decision trees and Naïve Bayes models for a data set containin information about marketing campaigns carried out by a Portuguese bank to get clients to subscribe to one of their products. 
+
+## 2.1 - Import and divide data
+
+The first step is to import the data into R and divide it into training (40 percent), validation (30 percent) and test (30 percent) sets for use in the following sections. The variable named "duration" is also removed. This is done with the following code:
+```{r}
+bank <- read.csv2("bank-full.csv")
+
+# Remove the "duration" variable
+bank <- bank[,-12]
+
+# Convert character variables to factors
+for (var in 1:ncol(bank)) {
+  if(is.character(bank[,var])){
+    bank[,var] <- as.factor(bank[,var])
+  }
+}
+
+# Train, validation, test sets
+n=dim(bank)[1]
+set.seed(12345) 
+id=sample(1:n, floor(n*0.4)) 
+train=bank[id,] 
+
+id1=setdiff(1:n, id)
+set.seed(12345) 
+id2=sample(id1, floor(n*0.3)) 
+valid=bank[id2,]
+
+id3=setdiff(id1,id2)
+test=bank[id3,] 
+```
+
+## 2.2 - Decision trees
+
+With the data processing completed we can now begin fitting decision trees. In total three trees are fitted using different settings. For each tree the misclassification rate is calculated for the training and validation sets.
+
+### 2.2 a) Default settings
+
+The first tree is fitted with the default settings:
+```{r}
+tree_default <- tree(formula = y~., 
+                     data = train)
+
+trainmis_default <- summary(tree_default)[[7]][1] / summary(tree_default)[[7]][2]
+validmis_default <- sum(predict(tree_default, 
+                                newdata = valid, 
+                                type = "class") != valid$y) / nrow(valid)
+```
+
+With the default settings the misclassification rate for the training set is `r round(trainmis_default, digits=3)` and for the validation set it is `r round(validmis_default, digits=3)`. 
+
+
+### 2.2 b) Minimum node size 7000
+
+The second tree is fitted by setting the minimum amount of observations allowed in a leaf to 7000:
+```{r}
+tree_nodesize <- tree(formula = y~., 
+                      data = train,
+                      control = tree.control(nobs = 18084,
+                                             minsize = 7000))
+
+trainmis_nodesize <- summary(tree_nodesize)[[7]][1] / summary(tree_nodesize)[[7]][2]
+validmis_nodesize <- sum(predict(tree_nodesize, 
+                                 newdata = valid, 
+                                 type = "class") != valid$y) / nrow(valid)
+```
+
+With these settings the misclassification rate for the training set is `r round(trainmis_nodesize, digits=3)` and for the validation set it is `r round(validmis_nodesize, digits=3)`. As can be observed these values are the same as for the default settings. To see why this is the case the two decision trees are plotted with the following code:
+```{r fig.height=6}
+par(mfrow=c(1,2))
+plot(tree_default)
+title("Default settings")
+text(tree_default)
+plot(tree_nodesize)
+title("Minimum node size 7000")
+text(tree_nodesize)
+```
+As the plot the plot shows that the difference when setting the minimum node size to 7000 is that the final split, based on the housing variable, no longer occurs. However, in both leaves following this split the outcome was no. As such removing these two leaves from the tree has no outcome on the final predictions, as the outcome of the parent node for the two removed leaves is also no. 
+
+
+### 2.2 c) Minimum deviance 0.0005
+
+The third and final tree is fitted by setting the minimum allowed deviance in a leaf to 0.0005:
+```{r}
+tree_deviance <- tree(formula = y~., 
+                      data = train,
+                      control = tree.control(nobs = 18084,
+                                             mindev = 0.0005))
+
+trainmis_deviance <- summary(tree_deviance)[[7]][1] / summary(tree_deviance)[[7]][2]
+validmis_deviance <- sum(predict(tree_deviance, 
+                                 newdata = valid, 
+                                 type = "class") != valid$y) / nrow(valid)
+```
+
+With these settings the misclassification rate for the training set is `r round(trainmis_deviance, digits=3)` and for the validation set it is `r round(validmis_deviance, digits=3)`. These values suggest that these settings have caused some overfitting, as the error for the training set is better compared to the previous trees, but for the validation set the error is worse. This is the expected result when allowing for a lower deviance, as this leads to nodes with higher purity, i.e. nodes with a higher rate of observations from only one class. This results in a more complicated model, which performs better on the data it was trained on, but the complicated structure is unlikely to be replicated in a general setting and as such performs worse on new data.
+
+Out of these three models the best one would appear to be the second model, where the minimum node size was set to 7000. The reason for this is that it performs just as well as the model using the default settings while also being a simpler model with fewer leaves.
+
+
+## 2.3 - Optimal amount of leaves for model 2.2 c
+
+In this section we take the overfitted model from 2.2 c and try to prune it to find an optimal amount of leaves, up to a maximum of 50 leaves. This is done by pruning the tree from the maximum amount of leaves down to the root node and calculating the deviance in each step. This is done with the following code:
+```{r}
+trainprune <- prune.tree(tree_deviance)
+validprune <- prune.tree(tree_deviance, newdata = valid)
+
+plot(rev(trainprune$size)[1:50], 
+     rev(trainprune$dev)[1:50], 
+     type = "b", 
+     col="red", 
+     ylim = c(8000,13000),
+     main = "Deviance vs number of leaves",
+     xlab = "Leaves",
+     ylab = "Deviance")
+points(rev(validprune$size)[1:50], 
+       rev(validprune$dev)[1:50], 
+       type = "b", 
+       col="blue")
+legend("topright",
+       legend = c("Training set", "Validation set"),
+       col = c("red","blue"),
+       pch = c(19,19))
+```
+From the graph it can be observed that the smallest deviance for the validation set is obtained when the amount of leaves is `r validprune$size[which.min(validprune$dev)]`. To explore this tree further it is plotted with the following code:
+```{r fig.height=15, fig.width=11}
+finaltree <- prune.tree(tree_deviance, best = 22)
+plot(finaltree, type = "uniform")
+title("Tree with optimal amount of leaves")
+text(finaltree, pretty = 0)
+```
+One of the most important variables is poutcome, outcome of previous marketing campaign, with the previous campaign being a success the main reason for an observation to be classified as "yes". It can still be the case that the client has not subscribed even though the previous campaign was a success, that is if the person is employed as an admin, blue-collar, entrepreneur, services or a technician. It should however be noted here that the probability for "no" is just 0.507 compared to 0.493 for "yes" so it is possible that the "no" vote here is due to random chance when the training set was partitioned.
+
+It can also be observed that there is one situation where even if the outcome of the previous campaign was not a success the client is predicted to have subscribed. The variable seemingly responsible for this is pdays, the number of days that passed by after the client was last contacted from a previous campaign. If the previous campaign was not a success and the client was contacted by cellular or telephone in the months of August, January, July, May or November, then if more than 383.5 days have passed since the last contact the observation is predicted to be "yes". Finally the confusion matrix and misclassification rate for the test set is calculated with the following code:
+```{r}
+yfit <- predict(finaltree, newdata = test, type = "class")
+table("True"=test$y, "Predicted"=yfit)
+1-(sum(diag(table("True"=test$y, "Predicted"=yfit)))/nrow(test))
+```
+While misclassification for the test set is only `r round(1-(sum(diag(table("True"=test$y, "Predicted"=yfit)))/nrow(test)), digits=3)` the confusion matrix shows that the predictive power for this model seems to be rather poor in terms of being able to correctly classify "yes" outcomes. With only 214 correct predictions and 1371 incorrect predictions for yes this does not appear to be a very good model.
+
+## 2.4 - Classification with new loss function
+
+In this section we instead attempt to find the optimal tree from 2.2 c by using a different loss function:
+```{r}
+matrix(c(0,1,5,0), nrow=2, byrow = T)
+```
+to punish the model more for incorrectly predicting "yes" as "no" which was observed to be a major issue in the previous section. This is done with the following code:
+```{r}
+loss <- prune.tree(tree_deviance, method = "misclass", loss = matrix(c(0,1,5,0), nrow=2, byrow = T))
+pruned_loss <- prune.tree(tree_deviance, best = loss$size[which.min(loss$dev)])
+fit_loss <- predict(pruned_loss, newdata = test, type = "class")
+table("True"=test$y, "Predicted"=fit_loss)
+1-(sum(diag(table("True"=test$y, "Predicted"=fit_loss)))/nrow(test))
+```
+It can be observed that the chosen model is slightly better at predicting "yes" correctly, with 109 more correct predictions. However, as a result of this 93 extra "no" outcomes have now been incorrectly predicted as "yes" such that the overall misclassification error has only decreased by `r (1-(sum(diag(table("True"=test$y, "Predicted"=yfit)))/nrow(test))) -(1-(sum(diag(table("True"=test$y, "Predicted"=fit_loss)))/nrow(test)))`. This is because as the penalty for incorrectly predicting "yes" as "no" is now five times greater than the reverse situation the model will to a greater extent predict "yes" in cases where the probabilities for the two outcomes are similar. 
+
+
+## 2.5 - Optimal tree versus Naïve Bayes model
+
+The final step of this assignment is to compare how the optimal tree from the previous section performs versus a Naïve Bayes model by classifying the test data with the following principle:
+$$\hat{Y}=1 \ \ if \ \ p(Y=yes|X) > \pi, \ \ otherwise \ \ \hat{Y}=0 $$
+where $\pi = 0.05, 0.1, 0.15,...,0.9,0.95$. For each value of $\pi$ the TPR and FPR values are calculated and used to plot the ROC curves for the two models. This is done with the following code:
+```{r}
+# Optimal model
+testprobs <- predict(finaltree, newdata = test)
+probseq <- seq(from=0.05, to=0.95, by=0.05)
+testpreds <- data.frame(matrix(0, nrow = nrow(test), ncol = length(probseq)))
+
+for (obs in 1:nrow(test)) {
+  for (prob in 1:length(probseq)) {
+    if(testprobs[obs,2]>probseq[prob]){
+      testpreds[obs,prob] <- "yes"
+    }else{
+      testpreds[obs,prob] <- "no"
+    }
+  }
+}
+
+tpr <- 0
+fpr <- 0
+for (i in 1:19) {
+  t <- table( "True"= test$y, "Prediction" = testpreds[,i])
+  if(dim(t)[2]==2){
+    tpr[i] <- t[2,2]/(t[2,2]+t[2,1])
+    fpr[i] <- t[1,2]/(t[1,2]+t[1,1])
+  }else{
+    tpr[i] <- 0
+    fpr[i] <- 0
+  }
+}
+
+# Naive Bayes
+naive_bayes <- naiveBayes(y~.,
+                          data = train)
+naive_bayes_preds <- predict(naive_bayes,
+                             newdata = test,
+                             type = "raw")
+testpreds_bayes <- data.frame(matrix(0, nrow = nrow(test), ncol = length(probseq)))
+
+for (obs in 1:nrow(test)) {
+  for (prob in 1:length(probseq)) {
+    if(naive_bayes_preds[obs,2]>probseq[prob]){
+      testpreds_bayes[obs,prob] <- "yes"
+    }else{
+      testpreds_bayes[obs,prob] <- "no"
+    }
+  }
+}
+
+tpr_bayes <- 0
+fpr_bayes <- 0
+
+for (i in 1:19) {
+  t <- table("True"= test$y, "Prediction" = testpreds_bayes[,i])
+  if(dim(t)[2]==2){
+    tpr_bayes[i] <- t[2,2]/(t[2,2]+t[2,1])
+    fpr_bayes[i] <- t[1,2]/(t[1,2]+t[1,1])
+  }else{
+    tpr_bayes[i] <- 0
+    fpr_bayes[i] <- 0
+  }
+}
+
+plot(fpr, tpr, 
+     type = "l", 
+     col="red", 
+     xlim = c(0,1), 
+     ylim = c(0,1),
+     main = "Optimal model versus Naïve Bayes",
+     xlab = "FPR",
+     ylab = "TPR")
+lines(fpr_bayes, tpr_bayes, col="blue")
+legend("topright",
+       legend = c("Optimal model","Naïve Bayes"),
+       col = c("red","blue"),
+       pch = 16)
+```
+The plot shows that the ROC curve for the optimal model has a greater area underneath it compared to the Naïve Bayes model, suggesting that it is a better classifier. 
+
+
+\newpage
+# 3. Assignment 3 - Principal components for crime level analysis
+
+### 3.1
 
 \newpage
 # Appendix: Assignment Code
 
-```{r, ref.label=knitr::all_labels(), echo=T, eval=F}
-``` 
+```{r, echo=T, eval=F}
+################################
+#Assignment 1
+################################
+
+
+################################
+#Assignment 2
+################################
+## 2.1
+bank <- read.csv2("bank-full.csv")
+
+# Remove the "duration" variable
+bank <- bank[,-12]
+
+# Convert character variables to factors
+for (var in 1:ncol(bank)) {
+  if(is.character(bank[,var])){
+    bank[,var] <- as.factor(bank[,var])
+  }
+}
+
+# Train, validation, test sets
+n=dim(bank)[1]
+set.seed(12345) 
+id=sample(1:n, floor(n*0.4)) 
+train=bank[id,] 
+
+id1=setdiff(1:n, id)
+set.seed(12345) 
+id2=sample(id1, floor(n*0.3)) 
+valid=bank[id2,]
+
+id3=setdiff(id1,id2)
+test=bank[id3,] 
+
+## 2.2
+tree_default <- tree(formula = y~., 
+                     data = train)
+
+trainmis_default <- summary(tree_default)[[7]][1] / summary(tree_default)[[7]][2]
+validmis_default <- sum(predict(tree_default, 
+                                newdata = valid, 
+                                type = "class") != valid$y) / nrow(valid)
+
+tree_nodesize <- tree(formula = y~., 
+                      data = train,
+                      control = tree.control(nobs = 18084,
+                                             minsize = 7000))
+
+trainmis_nodesize <- summary(tree_nodesize)[[7]][1] / summary(tree_nodesize)[[7]][2]
+validmis_nodesize <- sum(predict(tree_nodesize, 
+                                 newdata = valid, 
+                                 type = "class") != valid$y) / nrow(valid)
+
+par(mfrow=c(1,2))
+plot(tree_default)
+title("Default settings")
+text(tree_default)
+plot(tree_nodesize)
+title("Minimum node size 7000")
+text(tree_nodesize)
+
+tree_deviance <- tree(formula = y~., 
+                      data = train,
+                      control = tree.control(nobs = 18084,
+                                             mindev = 0.0005))
+
+trainmis_deviance <- summary(tree_deviance)[[7]][1] / summary(tree_deviance)[[7]][2]
+validmis_deviance <- sum(predict(tree_deviance, 
+                                 newdata = valid, 
+                                 type = "class") != valid$y) / nrow(valid)
+
+## 2.3
+trainprune <- prune.tree(tree_deviance)
+validprune <- prune.tree(tree_deviance, newdata = valid)
+
+plot(rev(trainprune$size)[1:50], 
+     rev(trainprune$dev)[1:50], 
+     type = "b", 
+     col="red", 
+     ylim = c(8000,13000),
+     main = "Deviance vs number of leaves",
+     xlab = "Leaves",
+     ylab = "Deviance")
+points(rev(validprune$size)[1:50], 
+       rev(validprune$dev)[1:50], 
+       type = "b", 
+       col="blue")
+legend("topright",
+       legend = c("Training set", "Validation set"),
+       col = c("red","blue"),
+       pch = c(19,19))
+
+finaltree <- prune.tree(tree_deviance, best = 22)
+plot(finaltree, type = "uniform")
+title("Tree with optimal amount of leaves")
+text(finaltree, pretty = 0)
+
+yfit <- predict(finaltree, newdata = test, type = "class")
+table("True"=test$y, "Predicted"=yfit)
+1-(sum(diag(table("True"=test$y, "Predicted"=yfit)))/nrow(test))
+
+## 2.4
+matrix(c(0,1,5,0), nrow=2, byrow = T)
+
+loss <- prune.tree(tree_deviance, method = "misclass", loss = matrix(c(0,1,5,0), nrow=2, byrow = T))
+pruned_loss <- prune.tree(tree_deviance, best = loss$size[which.min(loss$dev)])
+fit_loss <- predict(pruned_loss, newdata = test, type = "class")
+table("True"=test$y, "Predicted"=fit_loss)
+1-(sum(diag(table("True"=test$y, "Predicted"=fit_loss)))/nrow(test))
+
+## 2.5
+# Optimal model
+testprobs <- predict(finaltree, newdata = test)
+probseq <- seq(from=0.05, to=0.95, by=0.05)
+testpreds <- data.frame(matrix(0, nrow = nrow(test), ncol = length(probseq)))
+
+for (obs in 1:nrow(test)) {
+  for (prob in 1:length(probseq)) {
+    if(testprobs[obs,2]>probseq[prob]){
+      testpreds[obs,prob] <- "yes"
+    }else{
+      testpreds[obs,prob] <- "no"
+    }
+  }
+}
+
+tpr <- 0
+fpr <- 0
+for (i in 1:19) {
+  t <- table( "True"= test$y, "Prediction" = testpreds[,i])
+  if(dim(t)[2]==2){
+    tpr[i] <- t[2,2]/(t[2,2]+t[2,1])
+    fpr[i] <- t[1,2]/(t[1,2]+t[1,1])
+  }else{
+    tpr[i] <- 0
+    fpr[i] <- 0
+  }
+}
+
+# Naive Bayes
+naive_bayes <- naiveBayes(y~.,
+                          data = train)
+naive_bayes_preds <- predict(naive_bayes,
+                             newdata = test,
+                             type = "raw")
+testpreds_bayes <- data.frame(matrix(0, nrow = nrow(test), ncol = length(probseq)))
+
+for (obs in 1:nrow(test)) {
+  for (prob in 1:length(probseq)) {
+    if(naive_bayes_preds[obs,2]>probseq[prob]){
+      testpreds_bayes[obs,prob] <- "yes"
+    }else{
+      testpreds_bayes[obs,prob] <- "no"
+    }
+  }
+}
+
+tpr_bayes <- 0
+fpr_bayes <- 0
+
+for (i in 1:19) {
+  t <- table("True"= test$y, "Prediction" = testpreds_bayes[,i])
+  if(dim(t)[2]==2){
+    tpr_bayes[i] <- t[2,2]/(t[2,2]+t[2,1])
+    fpr_bayes[i] <- t[1,2]/(t[1,2]+t[1,1])
+  }else{
+    tpr_bayes[i] <- 0
+    fpr_bayes[i] <- 0
+  }
+}
+
+plot(fpr, tpr, 
+     type = "l", 
+     col="red", 
+     xlim = c(0,1), 
+     ylim = c(0,1),
+     main = "Optimal model versus Naïve Bayes",
+     xlab = "FPR",
+     ylab = "TPR")
+lines(fpr_bayes, tpr_bayes, col="blue")
+legend("topright",
+       legend = c("Optimal model","Naïve Bayes"),
+       col = c("red","blue"),
+       pch = 16)
+
+################################
+#Assignment 3
+################################
+
+```
