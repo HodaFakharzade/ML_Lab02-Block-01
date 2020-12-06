@@ -262,7 +262,7 @@ The plot shows that the ROC curve for the optimal model has a greater area under
 
 
 \newpage
-# Assignment 3: Principal components for crime level analysis.
+# Assignment 3 - Principal components for crime level analysis.
 ## 3.1. *Scale all variables except of ViolentCrimesPerPop and implement PCA by using function eigen(). Report how many features are needed to obtain at least 95% of variance in the data. What is the proportion of variation explained by each of the first two principal components?*
 ```{r,include=FALSE}
 ################################
@@ -384,6 +384,7 @@ gg <- ggplot(data_t, aes(x = X, y = Y)) +
 gg
 ```
 From the plot, it  is reasonable to fit a quadratic linear regression to our data set. It is not a perfect model of our data but the general behavior of the data seems to be captured by a second-degree polynomial.
+
 ## 3.4 *Use parametric bootstrap to estimate the confidence and prediction bands from the model from step 3 and add these bands into the plot from step 3. What can be concluded by looking at a) confidence intervals b) prediction intervals?*
 
 ### a)
