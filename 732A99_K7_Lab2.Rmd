@@ -459,6 +459,9 @@ points(data2$PC1,e$point[1,], type="l", col="blue")
 ```
 As expected the prediction band is wider than the confidence interval. There are still some data that fall out of the prediction interval.It is logical to consider them as noise.
 Due to the fact that, the prediction interval is a range that is more likely to contain the response value of the new observation under our second-degree polynomial regression.
+
+
+\newpage
 # Appendix:
 
 ```{r ref.label = knitr::all_labels(), echo=TRUE, eval=FALSE}
