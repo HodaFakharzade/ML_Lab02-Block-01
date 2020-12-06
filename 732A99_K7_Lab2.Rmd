@@ -10,7 +10,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tree)
 library(e1071)
 ```
-
 Statement of contribution: Assignment 1 was contributed mostly by Ravinder, assignment 2 by Otto and assignment 3 by Hoda.
 
 
@@ -263,208 +262,13 @@ The plot shows that the ROC curve for the optimal model has a greater area under
 
 
 \newpage
-# 3. Assignment 3 - Principal components for crime level analysis
-
-### 3.1
-
-\newpage
-# Appendix: Assignment Code
-
-```{r, echo=T, eval=F}
-################################
-#Assignment 1
-################################
-
-
-################################
-#Assignment 2
-################################
-## 2.1
-bank <- read.csv2("bank-full.csv")
-
-# Remove the "duration" variable
-bank <- bank[,-12]
-
-# Convert character variables to factors
-for (var in 1:ncol(bank)) {
-  if(is.character(bank[,var])){
-    bank[,var] <- as.factor(bank[,var])
-  }
-}
-
-# Train, validation, test sets
-n=dim(bank)[1]
-set.seed(12345) 
-id=sample(1:n, floor(n*0.4)) 
-train=bank[id,] 
-
-id1=setdiff(1:n, id)
-set.seed(12345) 
-id2=sample(id1, floor(n*0.3)) 
-valid=bank[id2,]
-
-id3=setdiff(id1,id2)
-test=bank[id3,] 
-
-## 2.2
-tree_default <- tree(formula = y~., 
-                     data = train)
-
-trainmis_default <- summary(tree_default)[[7]][1] / summary(tree_default)[[7]][2]
-validmis_default <- sum(predict(tree_default, 
-                                newdata = valid, 
-                                type = "class") != valid$y) / nrow(valid)
-
-tree_nodesize <- tree(formula = y~., 
-                      data = train,
-                      control = tree.control(nobs = 18084,
-                                             minsize = 7000))
-
-trainmis_nodesize <- summary(tree_nodesize)[[7]][1] / summary(tree_nodesize)[[7]][2]
-validmis_nodesize <- sum(predict(tree_nodesize, 
-                                 newdata = valid, 
-                                 type = "class") != valid$y) / nrow(valid)
-
-par(mfrow=c(1,2))
-plot(tree_default)
-title("Default settings")
-text(tree_default)
-plot(tree_nodesize)
-title("Minimum node size 7000")
-text(tree_nodesize)
-
-tree_deviance <- tree(formula = y~., 
-                      data = train,
-                      control = tree.control(nobs = 18084,
-                                             mindev = 0.0005))
-
-trainmis_deviance <- summary(tree_deviance)[[7]][1] / summary(tree_deviance)[[7]][2]
-validmis_deviance <- sum(predict(tree_deviance, 
-                                 newdata = valid, 
-                                 type = "class") != valid$y) / nrow(valid)
-
-## 2.3
-trainprune <- prune.tree(tree_deviance)
-validprune <- prune.tree(tree_deviance, newdata = valid)
-
-plot(rev(trainprune$size)[1:50], 
-     rev(trainprune$dev)[1:50], 
-     type = "b", 
-     col="red", 
-     ylim = c(8000,13000),
-     main = "Deviance vs number of leaves",
-     xlab = "Leaves",
-     ylab = "Deviance")
-points(rev(validprune$size)[1:50], 
-       rev(validprune$dev)[1:50], 
-       type = "b", 
-       col="blue")
-legend("topright",
-       legend = c("Training set", "Validation set"),
-       col = c("red","blue"),
-       pch = c(19,19))
-
-finaltree <- prune.tree(tree_deviance, best = 22)
-plot(finaltree, type = "uniform")
-title("Tree with optimal amount of leaves")
-text(finaltree, pretty = 0)
-
-yfit <- predict(finaltree, newdata = test, type = "class")
-table("True"=test$y, "Predicted"=yfit)
-1-(sum(diag(table("True"=test$y, "Predicted"=yfit)))/nrow(test))
-
-## 2.4
-matrix(c(0,1,5,0), nrow=2, byrow = T)
-
-loss <- prune.tree(tree_deviance, method = "misclass", loss = matrix(c(0,1,5,0), nrow=2, byrow = T))
-pruned_loss <- prune.tree(tree_deviance, best = loss$size[which.min(loss$dev)])
-fit_loss <- predict(pruned_loss, newdata = test, type = "class")
-table("True"=test$y, "Predicted"=fit_loss)
-1-(sum(diag(table("True"=test$y, "Predicted"=fit_loss)))/nrow(test))
-
-## 2.5
-# Optimal model
-testprobs <- predict(finaltree, newdata = test)
-probseq <- seq(from=0.05, to=0.95, by=0.05)
-testpreds <- data.frame(matrix(0, nrow = nrow(test), ncol = length(probseq)))
-
-for (obs in 1:nrow(test)) {
-  for (prob in 1:length(probseq)) {
-    if(testprobs[obs,2]>probseq[prob]){
-      testpreds[obs,prob] <- "yes"
-    }else{
-      testpreds[obs,prob] <- "no"
-    }
-  }
-}
-
-tpr <- 0
-fpr <- 0
-for (i in 1:19) {
-  t <- table( "True"= test$y, "Prediction" = testpreds[,i])
-  if(dim(t)[2]==2){
-    tpr[i] <- t[2,2]/(t[2,2]+t[2,1])
-    fpr[i] <- t[1,2]/(t[1,2]+t[1,1])
-  }else{
-    tpr[i] <- 0
-    fpr[i] <- 0
-  }
-}
-
-# Naive Bayes
-naive_bayes <- naiveBayes(y~.,
-                          data = train)
-naive_bayes_preds <- predict(naive_bayes,
-                             newdata = test,
-                             type = "raw")
-testpreds_bayes <- data.frame(matrix(0, nrow = nrow(test), ncol = length(probseq)))
-
-for (obs in 1:nrow(test)) {
-  for (prob in 1:length(probseq)) {
-    if(naive_bayes_preds[obs,2]>probseq[prob]){
-      testpreds_bayes[obs,prob] <- "yes"
-    }else{
-      testpreds_bayes[obs,prob] <- "no"
-    }
-  }
-}
-
-tpr_bayes <- 0
-fpr_bayes <- 0
-
-for (i in 1:19) {
-  t <- table("True"= test$y, "Prediction" = testpreds_bayes[,i])
-  if(dim(t)[2]==2){
-    tpr_bayes[i] <- t[2,2]/(t[2,2]+t[2,1])
-    fpr_bayes[i] <- t[1,2]/(t[1,2]+t[1,1])
-  }else{
-    tpr_bayes[i] <- 0
-    fpr_bayes[i] <- 0
-  }
-}
-
-plot(fpr, tpr, 
-     type = "l", 
-     col="red", 
-     xlim = c(0,1), 
-     ylim = c(0,1),
-     main = "Optimal model versus Naïve Bayes",
-     xlab = "FPR",
-     ylab = "TPR")
-lines(fpr_bayes, tpr_bayes, col="blue")
-legend("topright",
-       legend = c("Optimal model","Naïve Bayes"),
-       col = c("red","blue"),
-       pch = 16)
-
+# Assignment 3: Principal components for crime level analysis.
+## 3.1. *Scale all variables except of ViolentCrimesPerPop and implement PCA by using function eigen(). Report how many features are needed to obtain at least 95% of variance in the data. What is the proportion of variation explained by each of the first two principal components?*
+```{r,include=FALSE}
 ################################
 #Assignment 3
 ################################
-
 ```
-# Assignment 3: Principal components for crime level analysis.
-## 3.1. *Scale all variables except of ViolentCrimesPerPop and implement PCA by using function eigen(). Report how many features are needed to obtain at least 95% of variance in the data. What is the proportion of variation explained by each of the first two principal components?*
-
 ```{r,warning=FALSE,message=FALSE}
 library(ggplot2) 
 library(viridis)
@@ -655,3 +459,7 @@ points(data2$PC1,e$point[1,], type="l", col="blue")
 ```
 As expected the prediction band is wider than the confidence interval. There are still some data that fall out of the prediction interval.It is logical to consider them as noise.
 Due to the fact that, the prediction interval is a range that is more likely to contain the response value of the new observation under our second-degree polynomial regression.
+# Appendix:
+
+```{r ref.label = knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
