@@ -462,3 +462,196 @@ legend("topright",
 ################################
 
 ```
+# Assignment 3: Principal components for crime level analysis.
+## 3.1. *Scale all variables except of ViolentCrimesPerPop and implement PCA by using function eigen(). Report how many features are needed to obtain at least 95% of variance in the data. What is the proportion of variation explained by each of the first two principal components?*
+
+```{r,warning=FALSE,message=FALSE}
+library(ggplot2) 
+library(viridis)
+library(wesanderson)
+library(tidyverse)
+
+Data <- read.csv("communities.csv") #1994 X 101
+ # 3.1
+ df1 <- Data[,-ncol(Data)]
+ #scaling  and centering the data
+ df1 <- scale(df1,center = TRUE,scale = TRUE) # 1994 x 100
+ # performing PCA with eigen()
+ 
+ # center with 'colMeans()'
+ center_colmeans <- function(x) {
+   xcenter = colMeans(x)
+   x - rep(xcenter, rep.int(nrow(x), ncol(x)))
+ }
+ df1<-center_colmeans(df1)
+ 
+ # step1: Computing Cov xx.T
+ x_tilda <- cov(df1)
+ # step2: computing eigen vector of covariance matrix
+ 
+ df2 <-eigen(x_tilda)
+ e_values <- df2$values
+ 
+# step 3: getting new coordinate for x
+ Z <- df1 %*% df2$vectors
+ v1<- 0
+ temp1 <- sum(e_values) # sum of the e_values is 100
+ for (i in 1:length(e_values)) {
+   if (v1 <(0.95*sum(e_values))) {
+     v1 <- v1 + e_values[i]
+     index <-i
+     }
+ }
+ cat("we need ",index, "components to describe 95% of variance in the data\n")
+ temp2 <- round(e_values[1]+e_values[2])
+ cat("component 1 and 2 describe about ", temp2,"% of the variance in the data\n")
+ cat("component 1 describes ",round(e_values[1]),"% of the variance in the data \n")
+ cat("component 2 describes ",round(e_values[2]), "% of the variance in the data \n")
+ 
+```
+
+## 3.2 *Repeat PCA analysis by using princomp() function and make the score plot of the first principle component. Do many features have a notable contribution to this component? Report which 5 features contribute mostly (by the absolute value) to the first principle component. Comment whether these features have anything in common and whether they may have a logical relationship to the crime level. Also provide a plot of the PC scores in the coordinates (PC1, PC2) in which the color of the points is given by ViolentCrimesPerPop. Analyse this plot*
+
+```{r , warning=FALSE,message=FALSE}
+PCA <- princomp(df1,scores = TRUE)
+survey <- summary(PCA)
+U <- PCA$loadings 
+pca1_plot2_1 <- plot(PCA$scores[, 1], PCA$scores[, 2],
+                     cex = 1.5,
+                     xlab = "first principal component 25% variance",
+                     ylab = "second principal component 17% variance"
+, pch = 19, col = rgb(0, 0, 0, 0.15))
+
+plot(U[,1], main="Traceplot, PC1")
+pos <- which(abs(U[,1]) >= 0.15)
+cat(length(pos) ,"feature has a notable contribution to pc1 as they have 
+    absolute value greater than 0.15")
+cat("Name of top contributing features: \n")
+print(names(head(U[,1][pos],5)))
+
+```
+
+According to [UCI website](https://archive.ics.uci.edu/ml/datasets/Communities+and+Crime) these columns are :
+
+- medIncome: median household income
+
+- pctWInvInc: percentage of households with investment / rent income in 1989
+
+- pctWPubAsst: percentage of households with public assistance income in 1989
+
+- medFamInc: median family income (differs from household income for non-family households)
+
+- perCapInc: per capita income
+
+We can see that the value of household income and investment had a direct effect on the value of violent crime. So, we clearly see that household welfare is an important factor and these feature have a logical relationship to the crime level.
+
+```{r,message=FALSE,warning=FALSE}
+new_df <- data.frame(PCA$scores[, 1:2])
+ gg <- ggplot (new_df) +
+    geom_point (( aes(x =new_df[,1] , y = new_df[,2],colour = Data$ViolentCrimesPerPop ))) +
+      xlab (" first principal component 25% variance ")+
+   ylab (" second principal component 17% variance")+ ggtitle("PC scores")
+ gg+   theme_minimal()+  scale_color_viridis(option = "D")
+
+```
+In the following plot we can see the contribution of each component. As expected, PC1 has the largest value.
+
+```{r}
+plot(PCA,main = "Importance of components")
+
+```
+
+## 3.3 *Assume a second order polynomial regression model in which ViolentCrimesPerPop is target and PC1 is the feature. Compute this model using lm() function (hint: use poly() function within the formula), make a scatterplot of the target versus the feature and present also the predicted values in this plot. Can the target be well explained by this feature? Does the model seem to capture the connection between the target and the feature?*
+
+```{r,warning=FALSE,message=FALSE}
+# 3.3
+
+data_t = data.frame("X" = new_df[,1],
+                  "Y" = Data$ViolentCrimesPerPop)
+x.2 <- lm(Y ~ poly(poly(X, 2)) ,
+          data = data_t)
+
+gg <- ggplot(data_t, aes(x = X, y = Y)) +
+   geom_point(color="lightblue")+
+   ggtitle("PC1 Vs ViolenCrimes")+
+   geom_line(aes(x = X, y = predict(x.2), colour = "x^2")) +
+   theme_minimal() +
+   xlab("PC1") + ylab("ViolentCrimes")
+gg
+```
+From the plot, it  is reasonable to fit a quadratic linear regression to our data set. It is not a perfect model of our data but the general behavior of the data seems to be captured by a second-degree polynomial.
+## 3.4 *Use parametric bootstrap to estimate the confidence and prediction bands from the model from step 3 and add these bands into the plot from step 3. What can be concluded by looking at a) confidence intervals b) prediction intervals?*
+
+### a)
+```{r, warning=FALSE,message=FALSE}
+# 3.4
+library(boot)
+# based on slide 27 in lecture 2c block 1
+
+data <- new_df
+data$ViolentCrimes <- Data$ViolentCrimesPerPop
+colnames(data)<-c('PC1','PC2','ViolentCrimes')
+
+data2=data[order(data$PC1),]
+mle <- lm(ViolentCrimes ~ poly(PC1,2), data = data2)
+
+rng <- function(data,mle){
+   n <- length(data$ViolentCrimes)
+   data1=data.frame(ViolentCrimes=data$ViolentCrimes, PC1=data$PC1)
+   #generate new ViolentCrimes
+   data1$ViolentCrimes<- rnorm(n,predict(mle, newdata=data1),sd(mle$residuals))
+   return(data1)}
+
+
+f1<-function(data1){
+   res= lm(ViolentCrimes ~ poly(PC1,2), data = data1)
+   ##predict values for all PC1 values from the original data
+   ViolentCrimesP=predict(res,newdata=data2)
+   return(ViolentCrimesP)}
+
+res=boot(data2, statistic=f1, R=1000, mle = mle,ran.gen=rng  , sim="parametric")
+e <- envelope(res)
+
+
+fit <- lm(ViolentCrimes ~ poly(PC1,2), data = data2)
+ViolentCrimesP=predict(fit)
+plot(data$PC1,data$ViolentCrimes , pch=21, bg="orange")
+points(data2$PC1,ViolentCrimesP,type="l") #plot fitted line
+#plot confidence bands
+points(data2$PC1,e$point[2,], type="l", col="blue")
+points(data2$PC1,e$point[1,], type="l", col="blue")
+
+
+```
+In this assignment we performed a parametric bootstrap.We repeat this bootstrap method 1000 times in order to calculate bands.The model does fall inside the confidence band. The confidence band is larger at the both ends, that is because we have less data in these regions as a result, we have little knowledge about the effect and further information is needed.
+
+### b)
+```{r, message=FALSE,warning=FALSE}
+# Prediction bands
+mle <- lm(ViolentCrimes ~ poly(PC1,2), data = data2)
+f1=function(data1){
+   # fit polynomial model
+   
+   res=lm(ViolentCrimes ~ poly(PC1,2), data=data1)
+   #predict values for all PC1 values from the original data
+   
+   ViolentCrimesP=predict(res,newdata=data2)
+   n=length(data2$ViolentCrimes)
+   predictedP=rnorm(n,ViolentCrimesP,
+                    sd(mle$residuals))
+   return(predictedP)
+}
+res=boot(data2, statistic=f1, R=10000,
+         mle=mle,ran.gen=rng, sim="parametric")
+e <- envelope(res)
+
+
+fit <- lm(ViolentCrimes ~ poly(PC1,2), data = data2)
+ViolentCrimesP=predict(fit)
+plot(data$PC1,data$ViolentCrimes , pch=21, bg="orange")
+points(data2$PC1,ViolentCrimesP,type="l")
+points(data2$PC1,e$point[2,], type="l", col="blue")
+points(data2$PC1,e$point[1,], type="l", col="blue")
+```
+As expected the prediction band is wider than the confidence interval. There are still some data that fall out of the prediction interval.It is logical to consider them as noise.
+Due to the fact that, the prediction interval is a range that is more likely to contain the response value of the new observation under our second-degree polynomial regression.
